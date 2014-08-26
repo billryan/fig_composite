@@ -3,6 +3,7 @@
 import os
 import sys
 import re
+import numpy as np
 import PIL
 from PIL import Image
 
@@ -25,6 +26,36 @@ def conv_black2transparency(in_file):
     ensure_dir(pic_trans_file)
     img.save(pic_trans_file, "PNG")
     return 0
+
+def alpha_composite(src, dst):
+    '''
+    Return the alpha composite of src and dst.
+
+    Parameters:
+    src -- PIL RGBA Image object
+    dst -- PIL RGBA Image object
+
+    The algorithm comes from http://en.wikipedia.org/wiki/Alpha_compositing
+    '''
+    # http://stackoverflow.com/a/3375291/190597
+    # http://stackoverflow.com/a/9166671/190597
+    src = np.asarray(src)
+    dst = np.asarray(dst)
+    out = np.empty(src.shape, dtype = 'float')
+    alpha = np.index_exp[:, :, 3:]
+    rgb = np.index_exp[:, :, :3]
+    src_a = src[alpha]/255.0
+    dst_a = dst[alpha]/255.0
+    out[alpha] = src_a+dst_a*(1-src_a)
+    old_setting = np.seterr(invalid = 'ignore')
+    out[rgb] = (src[rgb]*src_a + dst[rgb]*dst_a*(1-src_a))/out[alpha]
+    np.seterr(**old_setting)    
+    out[alpha] *= 255
+    np.clip(out,0,255)
+    # astype('uint8') maps np.nan (and np.inf) to 0
+    out = out.astype('uint8')
+    out = Image.fromarray(out, 'RGBA')
+    return out
 
 raw_file_list = []
 #get pic file list recursively
@@ -84,5 +115,5 @@ for fn in pic_trans_file_list:
     pic_composite_file = fname + '-' + 'original' + extension
     print("Composite original.png with file %s...") %fn
     img_element = Image.open(fn)
-    Image.alpha_composite(img_base, img_element).save(pic_composite_file, "PNG")
+    alpha_composite(img_element, img_base).save(pic_composite_file, "PNG")
     print("Final composite file %s") %pic_composite_file
