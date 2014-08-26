@@ -6,92 +6,83 @@ import re
 import PIL
 from PIL import Image
 
-#fig_in_path = os.path.dirname(os.path.realpath(sys.argv[0])) 
-fig_in_path = os.path.relpath(os.path.dirname(os.path.realpath(sys.argv[0])))
+pic_raw_path = 'pic_raw/'
+pic_resize_path = 'pic_resize/'
+pic_trans_path = 'pic_trans/'
 
-fig_out_path = fig_in_path + "/fig_trans/"
-fig_resize_out_path = fig_in_path + "/fig_resize/"
-
-def conv_black2transparency(in_file, out_path):
+def conv_black2transparency(in_file):
+    pic_trans_file = in_file.replace("pic_resize","pic_trans")
     img = Image.open(in_file)
     img = img.convert("RGBA")
     datas = img.getdata()
-    
     newData = []
     for item in datas:
         if item[0] == 0 and item[1] == 0 and item[2] == 0:
             newData.append((255, 255, 255, 0))
         else:
             newData.append(item)
-    
     img.putdata(newData)
-
-    out_file = out_path + in_file
-    ensure_dir(out_file)
-    img.save(out_file, "PNG")
-
+    ensure_dir(pic_trans_file)
+    img.save(pic_trans_file, "PNG")
     return 0
 
-#get the file recursively
-file_list = []
-trans_flag = False
-def get_recursive_file_list(path):
-    current_files = os.listdir(path)
-    for file_name in current_files:
-        full_file_name = os.path.join(path, file_name)
-        print full_file_name
-        
-        if  os.path.isdir(full_file_name):
-            if trans_flag == False:
-                if os.path.realpath(full_file_name).find("fig_trans") != -1:
-                    print "Transparence fig already done"
-                    continue
-            get_recursive_file_list(full_file_name)
+raw_file_list = []
+#get pic file list recursively
+def get_file_list(path_in):
+    subdir_file_list = os.listdir(path_in)
+    for file_name in subdir_file_list:
+        full_file_name = os.path.join(path_in, file_name)
+        if os.path.isdir(full_file_name):
+            get_file_list(full_file_name)
         elif (None != re.search('(png|bmp|jpg|jpeg)$', file_name, re.IGNORECASE)):
-            file_list.append(full_file_name)
- 
-    return file_list
+            raw_file_list.append(full_file_name)
+    return raw_file_list
 
 def ensure_dir(f):
     d = os.path.dirname(f)
     if not os.path.exists(d):
         os.makedirs(d)
-
     return 0
 
-fig_in_list = get_recursive_file_list(fig_in_path)
+# Resize raw pictures
+pic_raw_file_list = get_file_list(pic_raw_path)
 img_size = 500,400
 
-for fn in fig_in_list:
+for fn in pic_raw_file_list:
+    print("Resizing file %s to 500x400...") %fn
+    pic_resize_file = fn.replace("pic_raw","pic_resize")
+    ensure_dir(pic_resize_file)
     img = Image.open(fn)
     img = img.resize(img_size,Image.ANTIALIAS)
-    fname,extension = os.path.splitext(fn)
+    fname,extension = os.path.splitext(pic_resize_file)
     newfile = fname+extension
     if extension != ".png" :
         newfile = fname + ".png"
 
-    #fig_resize_out_file = fig_resize_out_path + newfile
-    #ensure_dir(fig_resize_out_file)
-    img.save(fn,"PNG")
-    print "Resizing file : %s" % (fn)
+    ensure_dir(newfile)
+    img.save(newfile,"PNG")
 
-    conv_black2transparency(fn, fig_out_path)
-    print("File %s is converted to transparency.") %fn
+# Convert uniformed pictures into transparency
+raw_file_list = []
+pic_resize_file_list = get_file_list(pic_resize_path)
+for fn in pic_resize_file_list:
+    pic_trans_file = fn.replace("pic_resize","pic_trans")
+    if fn.find('original.png') == -1:
+        print("Convert file %s into transparency...") %fn
+        conv_black2transparency(fn)
+    else:
+        print("original.png need not transparent, give up...")
 
-print("Congratulations! All of the raw fig have been converted to transparency.")
-
-trans_flag = True
-file_list = []
-trans_fig_list = get_recursive_file_list(fig_out_path)
-print "fig_out_path=%s" %fig_out_path
-print trans_fig_list
-fig_temp = "fig_final.png"
-img0 = Image.open(trans_fig_list[0])
-img1 = Image.open(trans_fig_list[1])
-Image.alpha_composite(img0, img1).save(fig_temp, "PNG")
-print "First composition"
-
-for i in xrange(2,len(trans_fig_list)):
-    img0 = Image.open(fig_temp)
-    img1 = Image.open(trans_fig_list[i])
-    Image.alpha_composite(img0, img1).save(fig_temp, "PNG")
+# Composite original.png with other element.png
+raw_file_list = []
+pic_trans_file_list = get_file_list(pic_trans_path)
+img_base = Image.open(pic_resize_path + 'original.png')
+for fn in pic_trans_file_list:
+    composite_file = fn.replace("pic_trans","pic_composite")
+    ensure_dir(composite_file)
+    fname,extension = os.path.splitext(composite_file)
+    pic_composite_file = fname + '-' + 'original' + extension
+    print("Composite original.png with file %s...") %fn
+    img_element = Image.open(fn)
+    Image.alpha_composite(img_base, img_element).save(pic_composite_file, "PNG")
+    print("Final composite file %s") %pic_composite_file
